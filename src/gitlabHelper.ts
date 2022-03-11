@@ -75,6 +75,26 @@ export class GitlabHelper {
     }
   }
 
+  async updateProjectDescription(project_desc: string) {
+    try {
+      const project = await this.gitlabApi.Projects.show(this.gitlabProjectId);
+      project.description = `// ${project_desc} //\n ${project.description}`;
+      await this.gitlabApi.Projects.edit(this.gitlabProjectId, project);
+    } catch (err) {
+	console.error('An Error occured while updating project description:');
+	console.error(err);
+    }
+  }
+
+  async archiveProject() {
+    try {
+      await this.gitlabApi.Projects.archive(this.gitlabProjectId);
+    } catch (err) {
+      console.error('An Error occured while archiving project');
+      console.error(err);
+    }
+  }
+
   /**
    * Stores project path in a field
    */
