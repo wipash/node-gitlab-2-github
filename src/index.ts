@@ -228,9 +228,10 @@ async function migrate() {
         await transferMergeRequests();
       }
     }
-
+    inform('Updating GitLab Project Description');
     await gitlabHelper.updateProjectDescription(`Migrated to GitHub: https://github.com/${settings.github.owner}/${settings.github.repo}`);
 
+    inform('Archiving GitLab Project');
     await gitlabHelper.archiveProject();
   } catch (err) {
     console.error('Error during transfer:');
