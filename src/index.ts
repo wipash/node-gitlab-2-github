@@ -251,7 +251,7 @@ async function transferDescription() {
 
   let project = await gitlabApi.Projects.show(settings.gitlab.projectId);
 
-  await githubHelper.updateRepositoryDescription(project.description);
+  await githubHelper.updateRepositoryDescription(project.description ? project.description : '');
 }
 
 // ----------------------------------------------------------------------------
