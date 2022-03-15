@@ -8,6 +8,7 @@ import { GitlabHelper, GitLabIssue, GitLabMilestone } from './gitlabHelper';
 import settings from '../settings';
 
 import { Octokit as GitHubApi } from '@octokit/rest';
+import { graphql as GitHubApiGraphql } from '@octokit/graphql';
 import { throttling } from '@octokit/plugin-throttling';
 import { Gitlab } from '@gitbeaker/node';
 
@@ -81,9 +82,16 @@ const githubApi = new MyOctokit({
   },
 });
 
+const githubApiGraphql = GitHubApiGraphql.defaults({
+  headers: {
+    authorization: 'token ' + settings.github.token
+  }
+});
+
 const gitlabHelper = new GitlabHelper(gitlabApi, settings.gitlab);
 const githubHelper = new GithubHelper(
   githubApi,
+  githubApiGraphql,
   settings.github,
   gitlabHelper,
   settings.useIssuesForAllMergeRequests
@@ -187,6 +195,7 @@ async function migrate() {
 
   try {
     await githubHelper.registerRepoId();
+    await githubHelper.registerProjectDetails();
     await gitlabHelper.registerProjectPath(settings.gitlab.projectId);
 
     if (settings.transfer.description) {
