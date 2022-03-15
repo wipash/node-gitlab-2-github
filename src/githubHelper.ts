@@ -2,6 +2,8 @@ import settings from '../settings';
 import { GithubSettings } from './settings';
 import * as utils from './utils';
 import { Octokit as GitHubApi, RestEndpointMethodTypes } from '@octokit/rest';
+import { graphql } from '@octokit/graphql';
+type GitHubApiGraphql = typeof graphql
 import { Endpoints } from '@octokit/types';
 import {
   GitlabHelper,
@@ -56,8 +58,16 @@ export interface SimpleMilestone {
   title: string;
 }
 
+export interface ProjectField {
+  id: string;
+  name: string;
+  dataType: string;
+  settings?: string;
+}
+
 export class GithubHelper {
   githubApi: GitHubApi;
+  githubApiGraphql: GitHubApiGraphql;
   githubUrl: string;
   githubOwner: string;
   githubToken: string;
@@ -68,14 +78,18 @@ export class GithubHelper {
   delayInMs: number;
   useIssuesForAllMergeRequests: boolean;
   milestoneMap?: Map<number, SimpleMilestone>;
+  projectId?: string
+  projectFieldsByLowercaseName?: Map<string, ProjectField>
 
   constructor(
     githubApi: GitHubApi,
+    githubApiGraphql: GitHubApiGraphql,
     githubSettings: GithubSettings,
     gitlabHelper: GitlabHelper,
     useIssuesForAllMergeRequests: boolean
   ) {
     this.githubApi = githubApi;
+    this.githubApiGraphql = githubApiGraphql;
     this.githubUrl = githubSettings.baseUrl
       ? githubSettings.baseUrl
       : gitHubLocation;
@@ -111,6 +125,58 @@ export class GithubHelper {
       console.error(err);
       process.exit(1);
     }
+  }
+
+  /**
+   * Store project details
+   */
+  async registerProjectDetails() {
+    if (settings.github.projectNumber == null) {
+      return
+    }
+
+    await utils.sleep(this.delayInMs);
+    const { organization } = await this.githubApiGraphql(
+      `
+        query q($owner: String!, $number: Int!) {
+          organization(login: $owner) {
+            projectNext(number: $number) {
+              id
+              title
+              fields(first: 100) {
+                nodes {
+                  id
+                  name
+                  dataType
+                  settings
+                }
+              }
+            }
+          }
+        }
+      `,
+      {
+        owner: this.githubOwner,
+        number: settings.github.projectNumber
+      }
+    )
+
+    this.projectId = organization.projectNext.id
+    this.projectFieldsByLowercaseName = new Map()
+    organization.projectNext.fields.nodes.forEach(n => this.projectFieldsByLowercaseName.set(n.name.toLowerCase(), n))
+  }
+
+  getEquivalentSingleSelectField(label: string): { fieldId: string, optionId: string} | undefined {
+    const parts = label.split('::')
+    if (parts.length != 2) return undefined
+
+    const field = this.projectFieldsByLowercaseName?.get(parts[0].toLowerCase())
+    if (field?.dataType != 'SINGLE_SELECT') return undefined
+
+    const option = JSON.parse(field.settings).options.find(o => parts[1].toLowerCase() == o.name.toLowerCase())
+    if (option == null) return undefined
+
+    return {fieldId: field.id, optionId: option.id}
   }
 
   // ----------------------------------------------------------------------------
@@ -399,7 +465,7 @@ export class GithubHelper {
         let lower = l.toLowerCase();
         // ignore any labels that should have been removed when the issue was closed
         return lower !== 'doing' && lower !== 'to do';
-      });
+      }).filter(l => !this.getEquivalentSingleSelectField(l));
       if (settings.conversion.useLowerCaseLabels) {
         labels = labels.map((el: string) => el.toLowerCase());
       }
@@ -479,13 +545,20 @@ export class GithubHelper {
           `Importing ${assignees.length} assignees for GitHub issue #${issue_number}`
         );
       }
-      this.githubApi.issues.addAssignees({
+      await this.githubApi.issues.addAssignees({
         owner: this.githubOwner,
         repo: this.githubRepo,
         issue_number: issue_number,
         assignees: assignees,
       });
     }
+
+    const {data: ghIssue} = await this.githubApi.issues.get({
+      owner: this.githubOwner,
+      repo: this.githubRepo,
+      issue_number: issue_number,
+    });
+    await this.addIssueToProject(ghIssue, issue)
   }
 
   /**
@@ -686,6 +759,81 @@ export class GithubHelper {
       });
     return true;
   }
+
+  // ----------------------------------------------------------------------------
+
+  async addIssueToProject(githubIssue: GitHubIssue, issue: GitLabIssue) {
+    if (this.projectId == null) return;
+
+    await utils.sleep(this.delayInMs);
+    const { addProjectNextItem } = await this.githubApiGraphql(
+      `
+        mutation m($projectId: ID!, $contentId: ID!) {
+          addProjectNextItem(input: {projectId: $projectId, contentId: $contentId}) {
+            projectNextItem {
+              id
+            }
+          }
+        }
+      `,
+      {
+        projectId: this.projectId,
+        contentId: githubIssue.node_id
+      }
+    )
+
+    const itemId = addProjectNextItem.projectNextItem.id
+
+    const weight = issue.weight
+    const weightId = this.projectFieldsByLowercaseName?.get('weight')?.id
+    if (weight != null || weightId != null) {
+      await utils.sleep(this.delayInMs);
+      await this.githubApiGraphql(
+        `
+          mutation m($projectId: ID!, $itemId: ID!, $value: String!, $fieldId: ID!) {
+            updateProjectNextItemField(
+              input: {projectId: $projectId, itemId: $itemId, value: $value, fieldId: $fieldId}
+            ) {
+              clientMutationId
+            }
+          }
+        `,
+        {
+          projectId: this.projectId,
+          itemId: itemId,
+          fieldId: weightId,
+          value: weight.toString()
+        }
+      )
+    }
+
+    if (issue.labels) {
+      for (const label of issue.labels) {
+        const singleSelect = this.getEquivalentSingleSelectField(label)
+        if (singleSelect) {
+          await utils.sleep(this.delayInMs);
+          await this.githubApiGraphql(
+            `
+              mutation m($projectId: ID!, $itemId: ID!, $value: String!, $fieldId: ID!) {
+                updateProjectNextItemField(
+                  input: {projectId: $projectId, itemId: $itemId, value: $value, fieldId: $fieldId}
+                ) {
+                  clientMutationId
+                }
+              }
+            `,
+            {
+              projectId: this.projectId,
+              itemId: itemId,
+              fieldId: singleSelect.fieldId,
+              value: singleSelect.optionId
+            }
+          )
+        }
+      }
+    }
+  }
+
 
   // ----------------------------------------------------------------------------
 
@@ -1094,6 +1242,10 @@ export class GithubHelper {
         githubIssue as GitHubIssue,
         issue as GitLabIssue
       );
+      await this.addIssueToProject(
+        githubIssue as GitHubIssue,
+        issue as GitLabIssue
+      );
       // make sure to close the GitHub issue if it is closed in GitLab
       await this.updateIssueState(
         githubIssue as GitHubIssue,
@@ -1399,7 +1551,8 @@ export class GithubHelper {
     }
     try {
       console.log(`Creating repo ${params.owner}/${params.repo}...`);
-      await this.githubApi.repos.createForAuthenticatedUser({
+      await this.githubApi.repos.createInOrg({
+        org: this.githubOwner,
         name: this.githubRepo,
         private: true,
       });

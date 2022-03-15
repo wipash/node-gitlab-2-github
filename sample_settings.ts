@@ -15,6 +15,7 @@ export default {
     token_owner: '{{token_owner}}',
     repo: '{{repo}}',
     recreateRepo: false,
+    projectNumber: null,
   },
   s3: {
     accessKeyId: '{{accessKeyId}}',
