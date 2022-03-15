@@ -58,6 +58,13 @@ export interface SimpleMilestone {
   title: string;
 }
 
+export interface ProjectField {
+  id: string;
+  name: string;
+  dataType: string;
+  settings?: string;
+}
+
 export class GithubHelper {
   githubApi: GitHubApi;
   githubApiGraphql: GitHubApiGraphql;
@@ -72,7 +79,7 @@ export class GithubHelper {
   useIssuesForAllMergeRequests: boolean;
   milestoneMap?: Map<number, SimpleMilestone>;
   projectId?: string
-  weightId?: string
+  projectFieldsByLowercaseName?: Map<string, ProjectField>
 
   constructor(
     githubApi: GitHubApi,
@@ -155,7 +162,21 @@ export class GithubHelper {
     )
 
     this.projectId = organization.projectNext.id
-    this.weightId = organization.projectNext.fields.nodes.find(n => n.name === "Weight").id
+    this.projectFieldsByLowercaseName = new Map()
+    organization.projectNext.fields.nodes.forEach(n => this.projectFieldsByLowercaseName.set(n.name.toLowerCase(), n))
+  }
+
+  getEquivalentSingleSelectField(label: string): { fieldId: string, optionId: string} | undefined {
+    const parts = label.split('::')
+    if (parts.length != 2) return undefined
+
+    const field = this.projectFieldsByLowercaseName?.get(parts[0].toLowerCase())
+    if (field?.dataType != 'SINGLE_SELECT') return undefined
+
+    const option = JSON.parse(field.settings).options.find(o => parts[1].toLowerCase() == o.name.toLowerCase())
+    if (option == null) return undefined
+
+    return {fieldId: field.id, optionId: option.id}
   }
 
   // ----------------------------------------------------------------------------
@@ -444,7 +465,7 @@ export class GithubHelper {
         let lower = l.toLowerCase();
         // ignore any labels that should have been removed when the issue was closed
         return lower !== 'doing' && lower !== 'to do';
-      });
+      }).filter(l => !this.getEquivalentSingleSelectField(l));
       if (settings.conversion.useLowerCaseLabels) {
         labels = labels.map((el: string) => el.toLowerCase());
       }
@@ -764,26 +785,53 @@ export class GithubHelper {
     const itemId = addProjectNextItem.projectNextItem.id
 
     const weight = issue.weight
-    if (weight == null || this.weightId == null) return
-
-    await utils.sleep(this.delayInMs);
-    await this.githubApiGraphql(
-      `
-        mutation m($projectId: ID!, $itemId: ID!, $value: String!, $fieldId: ID!) {
-          updateProjectNextItemField(
-            input: {projectId: $projectId, itemId: $itemId, value: $value, fieldId: $fieldId}
-          ) {
-            clientMutationId
+    const weightId = this.projectFieldsByLowercaseName?.get('weight')?.id
+    if (weight != null || weightId != null) {
+      await utils.sleep(this.delayInMs);
+      await this.githubApiGraphql(
+        `
+          mutation m($projectId: ID!, $itemId: ID!, $value: String!, $fieldId: ID!) {
+            updateProjectNextItemField(
+              input: {projectId: $projectId, itemId: $itemId, value: $value, fieldId: $fieldId}
+            ) {
+              clientMutationId
+            }
           }
+        `,
+        {
+          projectId: this.projectId,
+          itemId: itemId,
+          fieldId: weightId,
+          value: weight.toString()
         }
-      `,
-      {
-        projectId: this.projectId,
-        itemId: itemId,
-        fieldId: this.weightId,
-        value: weight.toString()
+      )
+    }
+
+    if (issue.labels) {
+      for (const label of issue.labels) {
+        const singleSelect = this.getEquivalentSingleSelectField(label)
+        if (singleSelect) {
+          await utils.sleep(this.delayInMs);
+          await this.githubApiGraphql(
+            `
+              mutation m($projectId: ID!, $itemId: ID!, $value: String!, $fieldId: ID!) {
+                updateProjectNextItemField(
+                  input: {projectId: $projectId, itemId: $itemId, value: $value, fieldId: $fieldId}
+                ) {
+                  clientMutationId
+                }
+              }
+            `,
+            {
+              projectId: this.projectId,
+              itemId: itemId,
+              fieldId: singleSelect.fieldId,
+              value: singleSelect.optionId
+            }
+          )
+        }
       }
-    )
+    }
   }
 
 

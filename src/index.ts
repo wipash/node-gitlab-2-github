@@ -364,7 +364,7 @@ async function transferLabels(attachmentLabel = true, useLowerCase = true) {
     // GitHub prefers lowercase label names
     if (useLowerCase) label.name = label.name.toLowerCase();
 
-    if (!githubLabels.find(l => l === label.name)) {
+    if (!githubLabels.find(l => l === label.name) && !githubHelper.getEquivalentSingleSelectField(label.name)) {
       console.log('Creating: ' + label.name);
       try {
         // process asynchronous code in sequence
