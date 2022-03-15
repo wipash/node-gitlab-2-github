@@ -32,6 +32,8 @@ export default interface Settings {
     log: boolean;
   };
   s3?: S3Settings;
+  archiveGitLabProject: boolean;
+  updateGitLabProjectDescription: boolean;
 }
 
 export interface GithubSettings {

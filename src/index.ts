@@ -228,11 +228,14 @@ async function migrate() {
         await transferMergeRequests();
       }
     }
-    inform('Updating GitLab Project Description');
-    await gitlabHelper.updateProjectDescription(`Migrated to GitHub: https://github.com/${settings.github.owner}/${settings.github.repo}`);
 
-    inform('Archiving GitLab Project');
-    await gitlabHelper.archiveProject();
+    if (settings.updateGitLabProjectDescription) {
+      await updateProjectDescription();
+    }
+
+    if (settings.archiveGitLabProject) {
+      await archiveProject();
+    }
   } catch (err) {
     console.error('Error during transfer:');
     console.error(err);
@@ -251,7 +254,9 @@ async function transferDescription() {
 
   let project = await gitlabApi.Projects.show(settings.gitlab.projectId);
 
-  await githubHelper.updateRepositoryDescription(project.description ? project.description : '');
+  await githubHelper.updateRepositoryDescription(
+    project.description ? project.description : ''
+  );
 }
 
 // ----------------------------------------------------------------------------
@@ -681,6 +686,29 @@ async function logMergeRequests(logFile: string) {
   const output = { mergeRequests: mergeRequests };
 
   fs.writeFileSync(logFile, JSON.stringify(output, null, 2));
+}
+
+// ----------------------------------------------------------------------------
+
+/**
+ * Update GitLab project description with a message pointing to the new repo location
+ */
+async function updateProjectDescription() {
+  inform('Updating GitLab Project Description');
+  let project = await gitlabApi.Projects.show(settings.gitlab.projectId);
+  let append_desc = `Migrated to GitHub: ${githubHelper.githubUrl}/${settings.github.owner}/${settings.github.repo}`;
+  let new_description = `## ${append_desc} ##\n\n${project.description}`;
+  await gitlabHelper.updateProjectDescription(new_description);
+}
+
+// ----------------------------------------------------------------------------
+
+/**
+ * Archive GitLab project
+ */
+async function archiveProject() {
+  inform('Archiving GitLab Project');
+  await gitlabHelper.archiveProject();
 }
 
 // ----------------------------------------------------------------------------
