@@ -786,7 +786,7 @@ export class GithubHelper {
 
     const weight = issue.weight
     const weightId = this.projectFieldsByLowercaseName?.get('weight')?.id
-    if (weight != null || weightId != null) {
+    if (weight != null && weightId != null) {
       await utils.sleep(this.delayInMs);
       await this.githubApiGraphql(
         `
