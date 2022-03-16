@@ -70,7 +70,27 @@ export class GitlabHelper {
       );
       console.log('\n\n');
     } catch (err) {
-      console.error('An Error occured while fetching all GitLab projects:');
+      console.error('An Error occurred while fetching all GitLab projects:');
+      console.error(err);
+    }
+  }
+
+  async updateProjectDescription(project_desc: string) {
+    try {
+      const project = await this.gitlabApi.Projects.show(this.gitlabProjectId);
+      project.description = project_desc;
+      await this.gitlabApi.Projects.edit(this.gitlabProjectId, project);
+    } catch (err) {
+      console.error('An Error occurred while updating project description:');
+      console.error(err);
+    }
+  }
+
+  async archiveProject() {
+    try {
+      await this.gitlabApi.Projects.archive(this.gitlabProjectId);
+    } catch (err) {
+      console.error('An Error occurred while archiving project');
       console.error(err);
     }
   }
@@ -83,7 +103,7 @@ export class GitlabHelper {
       const project = await this.gitlabApi.Projects.show(project_d);
       this.projectPath = project['path_with_namespace'];
     } catch (err) {
-      console.error('An Error occured while fetching all GitLab projects:');
+      console.error('An Error occurred while fetching all GitLab projects:');
       console.error(err);
     }
   }

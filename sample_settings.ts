@@ -54,4 +54,6 @@ export default {
     logFile: './merge-requests.json',
     log: false,
   },
+  archiveGitLabProject: false,
+  updateGitLabProjectDescription: false,
 } as Settings;

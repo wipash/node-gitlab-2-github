@@ -98,7 +98,7 @@ export class GithubHelper {
     this.githubRepo = githubSettings.repo;
     this.githubTimeout = githubSettings.timeout;
     this.gitlabHelper = gitlabHelper;
-    this.delayInMs = 2000;
+    this.delayInMs = 10;
     this.useIssuesForAllMergeRequests = useIssuesForAllMergeRequests;
   }
 
@@ -786,7 +786,7 @@ export class GithubHelper {
 
     const weight = issue.weight
     const weightId = this.projectFieldsByLowercaseName?.get('weight')?.id
-    if (weight != null || weightId != null) {
+    if (weight != null && weightId != null) {
       await utils.sleep(this.delayInMs);
       await this.githubApiGraphql(
         `
