@@ -98,7 +98,7 @@ export class GithubHelper {
     this.githubRepo = githubSettings.repo;
     this.githubTimeout = githubSettings.timeout;
     this.gitlabHelper = gitlabHelper;
-    this.delayInMs = 10;
+    this.delayInMs = 2000;
     this.useIssuesForAllMergeRequests = useIssuesForAllMergeRequests;
   }
 
