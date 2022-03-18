@@ -21,6 +21,7 @@ export default {
     accessKeyId: '{{accessKeyId}}',
     secretAccessKey: '{{secretAccessKey}}',
     bucket: 'my-gitlab-bucket',
+    region: 'ap-southeast-2',
   },
   usermap: {
     'username.gitlab.1': 'username.github.1',

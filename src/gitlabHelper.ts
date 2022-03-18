@@ -131,7 +131,7 @@ export class GitlabHelper {
     try {
       const attachmentUrl = this.host + '/' + this.projectPath + relurl;
       const data = (
-        await axios.get(attachmentUrl, {
+        await axios.get(encodeURI(attachmentUrl), {
           responseType: 'arraybuffer',
           headers: {
             // HACK: work around GitLab's API lack of GET for attachments

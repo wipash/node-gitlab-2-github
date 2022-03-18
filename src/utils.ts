@@ -26,6 +26,23 @@ export const migrateAttachments = async (
   // Find all local links
   const matches = body.matchAll(regexp);
 
+  if (s3 && s3.bucket) {
+    const s3bucket = new S3({ computeChecksums: true });
+    const bucketParams = {
+      Bucket: s3.bucket,
+      CreateBucketConfiguration: {
+        LocationConstraint: s3.region,
+      },
+    };
+    try {
+      await s3bucket.createBucket(bucketParams).promise();
+    } catch (err) {
+      if (err.code !== 'BucketAlreadyOwnedByYou') {
+        console.log('ERROR: ', err);
+      }
+    }
+  }
+
   for (const match of matches) {
     const prefix = match[1] || '';
     const name = match[2];
@@ -50,30 +67,27 @@ export const migrateAttachments = async (
       //https://stackoverflow.com/questions/41581151/how-to-upload-an-image-to-use-in-issue-comments-via-github-api
 
       const s3url = `https://${s3.bucket}.s3.amazonaws.com/${relativePath}`;
+      const s3bucket = new S3({ computeChecksums: true });
 
-      const s3bucket = new S3();
-      s3bucket.createBucket(() => {
-        const params: S3.PutObjectRequest = {
-          Key: relativePath,
-          Body: attachmentBuffer,
-          ContentType: mimeType === false ? undefined : mimeType,
-          Bucket: s3.bucket,
-        };
+      console.log(`\tUploading ${basename} to ${s3url}... `);
 
-        s3bucket.upload(params, function (err, data) {
-          console.log(`\tUploading ${basename} to ${s3url}... `);
-          if (err) {
-            console.log('ERROR: ', err);
-          } else {
-            console.log(`\t...Done uploading`);
-          }
-        });
-      });
+      const params: S3.PutObjectRequest = {
+        Key: relativePath,
+        Body: attachmentBuffer,
+        ContentType: mimeType === false ? undefined : mimeType,
+        Bucket: s3.bucket,
+      };
 
-      // Add the new URL to the map
-      offsetToAttachment[
-        match.index as number
-      ] = `${prefix}[${name}](${s3url})`;
+      try {
+        const upload = await s3bucket.upload(params).promise();
+        console.log(`\t...Done uploading ${basename}`);
+        // Add the new URL to the map
+        offsetToAttachment[
+          match.index as number
+        ] = `${prefix}[${name}](${s3url})`;
+      } catch (err) {
+        console.log('ERROR: ', err);
+      }
     } else {
       // Not using S3: default to old URL, adding absolute path
       const host = gitlabHelper.host.endsWith('/')
